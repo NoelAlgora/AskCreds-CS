@@ -73,3 +73,13 @@ WINBASEAPI BOOLEAN WINAPI SECUR32$GetUserNameExW(EXTENDED_NAME_FORMAT NameFormat
 
 //SHLWAPI
 WINBASEAPI PCWSTR WINAPI SHLWAPI$StrStrIW(PCWSTR pszFirst, PCWSTR pszSrch);
+
+WINBASEAPI int __cdecl MSVCRT$sprintf(char *dest, const char *format, ...);
+// === KERNEL32 - Sleep ===
+WINBASEAPI void WINAPI KERNEL32$Sleep(DWORD dwMilliseconds);
+
+// === KERNEL32 - GetTickCount ===
+WINBASEAPI DWORD WINAPI KERNEL32$GetTickCount(void);
+
+// === OLE32 - CoTaskMemFree ===
+WINBASEAPI void WINAPI OLE32$CoTaskMemFree(LPVOID pv);
