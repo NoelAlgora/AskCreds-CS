@@ -83,3 +83,17 @@ WINBASEAPI DWORD WINAPI KERNEL32$GetTickCount(void);
 
 // === OLE32 - CoTaskMemFree ===
 WINBASEAPI void WINAPI OLE32$CoTaskMemFree(LPVOID pv);
+// === ADVAPI32 - LogonUserW ===
+WINBASEAPI BOOL WINAPI ADVAPI32$LogonUserW(
+    LPCWSTR lpszUsername,
+    LPCWSTR lpszDomain,
+    LPCWSTR lpszPassword,
+    DWORD   dwLogonType,
+    DWORD   dwLogonProvider,
+    PHANDLE phToken
+);
+
+// === MSVCRT - wcschr ===
+WINBASEAPI WCHAR* __cdecl MSVCRT$wcschr(const WCHAR* str, WCHAR ch);
+// === MSVCRT - memcpy ===
+WINBASEAPI void* __cdecl MSVCRT$memcpy(void* dest, const void* src, size_t count);
