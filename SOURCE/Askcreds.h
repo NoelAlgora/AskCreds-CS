@@ -53,11 +53,16 @@ WINBASEAPI DWORD WINAPI KERNEL32$GetLastError(VOID);
 WINBASEAPI DWORD WINAPI KERNEL32$GetCurrentProcessId();
 WINBASEAPI HANDLE WINAPI KERNEL32$OpenProcess(DWORD dwDesiredAccess, BOOL bInheritHandle, DWORD dwProcessId);
 WINBASEAPI BOOL WINAPI KERNEL32$QueryFullProcessImageNameW(HANDLE hProcess, DWORD  dwFlags, LPWSTR lpExeName, PDWORD lpdwSize);
+WINBASEAPI void WINAPI KERNEL32$Sleep(DWORD dwMilliseconds);
+WINBASEAPI DWORD WINAPI KERNEL32$GetTickCount(void);
 
 //MSVCRT
 WINBASEAPI void __cdecl MSVCRT$memset(void *dest, int c, size_t count);
 WINBASEAPI int __cdecl MSVCRT$_wcsicmp(const wchar_t *_Str1, const wchar_t *_Str2);
 WINBASEAPI int __cdecl MSVCRT$_stricmp(const char *string1, const char *string2);
+WINBASEAPI WCHAR* __cdecl MSVCRT$wcschr(const WCHAR* str, WCHAR ch);
+WINBASEAPI void* __cdecl MSVCRT$memcpy(void* dest, const void* src, size_t count);
+WINBASEAPI int __cdecl MSVCRT$sprintf(char *dest, const char *format, ...);
 
 //USER32
 WINUSERAPI WINBOOL USER32$EnumWindows(WNDENUMPROC lpEnumFunc,LPARAM lParam);
@@ -74,13 +79,6 @@ WINBASEAPI BOOLEAN WINAPI SECUR32$GetUserNameExW(EXTENDED_NAME_FORMAT NameFormat
 //SHLWAPI
 WINBASEAPI PCWSTR WINAPI SHLWAPI$StrStrIW(PCWSTR pszFirst, PCWSTR pszSrch);
 
-WINBASEAPI int __cdecl MSVCRT$sprintf(char *dest, const char *format, ...);
-// === KERNEL32 - Sleep ===
-WINBASEAPI void WINAPI KERNEL32$Sleep(DWORD dwMilliseconds);
-
-// === KERNEL32 - GetTickCount ===
-WINBASEAPI DWORD WINAPI KERNEL32$GetTickCount(void);
-
 // === OLE32 - CoTaskMemFree ===
 WINBASEAPI void WINAPI OLE32$CoTaskMemFree(LPVOID pv);
 // === ADVAPI32 - LogonUserW ===
@@ -92,8 +90,3 @@ WINBASEAPI BOOL WINAPI ADVAPI32$LogonUserW(
     DWORD   dwLogonProvider,
     PHANDLE phToken
 );
-
-// === MSVCRT - wcschr ===
-WINBASEAPI WCHAR* __cdecl MSVCRT$wcschr(const WCHAR* str, WCHAR ch);
-// === MSVCRT - memcpy ===
-WINBASEAPI void* __cdecl MSVCRT$memcpy(void* dest, const void* src, size_t count);
